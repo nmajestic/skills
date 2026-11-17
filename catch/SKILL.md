@@ -1,100 +1,139 @@
 ---
 name: Catch
-description: Run final deterministic audits on code changes and land them into version control following the target repository's Git conventions.
+description: Run final deterministic audits, land changes following the target repository's Git conventions, and report a telemetry-only summary.
 ---
 
 # Catch
 
-Execute final deterministic audits on all changes and land the work cleanly
-into version control. Run verification checks via parallel sub-agents to keep
-the orchestrator's context window minimal, land with the target repository's
-existing Git and PR conventions, and block landing if any audit fails.
+Catch is the final deterministic gate and landing stage. It verifies the
+records and checks, lands the work, and reports telemetry only so no human
+needs to inspect implementation details.
 
-**Standalone Mode:** When invoked directly without a prior `static-fire`
-handoff, discover the repo's test, lint, type-check, and build commands from
-`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile`, or CI
-workflows, then stop after committing or opening the PR.
+**Standalone Mode:** Without a `static-fire` handoff, discover the repo's test,
+lint, type-check, and build commands, run the full Phase 1 audit, commit and
+report, then stop. Mark the Spec Ledger Verifier and Blueprint Criteria Verifier
+`SKIPPED` when no blueprint exists. Do not invoke max-q or any downstream stage.
 
 ## Core Landing Principles
 
-1. **Zero Tolerance Gatekeeper** — Unlike `max-q` (semantic code review),
-   `catch` relies strictly on deterministic pass/fail signals (exit codes, test
-   runners, compilers, linters, regex checks). Never commit or open a PR with a
-   failing check.
-2. **Parallel Audit Execution** — Fan out all independent verification checks
-   simultaneously in a single batch rather than running them sequentially.
+1. **Zero Tolerance Gatekeeper** — Rely only on deterministic pass/fail
+   signals (exit codes, test runners, compilers, linters, regex checks). Never
+   commit with a failing check.
+2. **Parallel Audit Execution** — Fan out all independent checks in a single
+   batch rather than running them sequentially.
 3. **Log Isolation** — Sub-agents absorb full test runner, compiler, and linter
-   outputs in their isolated contexts and return only a compact status receipt
-   (< 100 words).
-4. **Strict Git Hygiene** — Enforce atomic commits and clear, structured PR
-   descriptions that match the target repository's conventions before
-   completing the mission.
+   logs in their isolated contexts and return compact receipts.
+4. **Telemetry-Only Reporting** — The final report is a compact status matrix
+   covering spec checks, tests, type-check/build, lint, hygiene, and the commit
+   hash. Never paste code snippets, diffs, or file contents, and
+   never ask the user to review implementation details. If human attention is
+   required, state only the exact failing check and error.
+5. **Strict Git Hygiene** — Enforce atomic commits and clear, structured PR
+   descriptions that match the target repository's conventions.
 
 ## Execution Workflow
 
 ### Phase 1: Parallel Deterministic Audit Fan-Out
 
-Run only the commands discovered by `static-fire` (or discovered directly from
-repo config files when standalone); never assume a language-specific tool. If
-a check has no configured command, skip it and report `SKIPPED` rather than
-failing. Spawn all applicable audit sub-agents simultaneously in a **single
-parallel batch**:
+Run only the commands discovered by `static-fire` or found in the repo config;
+never assume a language-specific tool. **Skip gating:** `SKIPPED` is valid only
+when `static-fire` recorded `none` for that check, or standalone discovery found
+no command. A check recorded with a command that is skipped is `FAIL`.
 
-1. **Sub-Agent 1 — Test Suite Runner:**
-   - **Focus:** Execute unit and integration tests using the repository's
-     native test command (from `static-fire`); run the full suite if fast.
-   - **Output:** `PASS`, `FAIL` (exact failing test names and assertion errors
-     only), or `SKIPPED` if no test suite is configured.
+Spawn all applicable audit sub-agents simultaneously in a single parallel batch:
 
-2. **Sub-Agent 2 — Type-Check & Build Verifier:**
-   - **Focus:** Run the repository's native type-check and build commands (from
-     `static-fire`) to confirm zero compilation or bundling errors.
-   - **Output:** `PASS`, `FAIL` (exact file/line compiler errors only), or
-     `SKIPPED` if no type-check/build command is configured.
-
-3. **Sub-Agent 3 — Linter & Formatting Auditor:**
-   - **Focus:** Run the repository's configured linter and formatter (from
-     `static-fire`) across all modified files.
-   - **Output:** `PASS`, `FAIL` (rule violations only), or `SKIPPED` if no
-     linter/formatter is configured.
-
-4. **Sub-Agent 4 — Repo Hygiene & Security Scan:**
-   - **Focus:** Check `git status` and `git diff` for untracked temporary
-     files, leftover debug logging statements, commented-out dead code, or
-     accidentally staged secrets/env files.
-   - **Output:** `CLEAN` or `DIRTY` with exact file paths.
+1. **Spec Ledger Verifier:** Verify every blueprint unit has a liftoff receipt
+   with the correct `UNIT: U<n>`, every criterion ID has `PASS` plus evidence,
+   `BLOCKED: none`, `DEVIATIONS: none`, `SPEC_COMPLIANCE` equals the blueprint's
+   `<N>/<N>`, the full-tree fingerprint matches, and max-q reported zero
+   findings. Output `PASS <N>/<N>` only when all of the above hold; otherwise
+   output `FAIL` naming the stale or missing item. Output `SKIPPED` only in
+   standalone mode without a blueprint.
+2. **Blueprint Criteria Verifier:** Independently execute every blueprint
+   criterion command/assertion (file existence, signatures, schemas/props,
+   grep/absence, behavioral assertions) against the working tree. Do not trust
+   liftoff receipts. Output `PASS <n>/<N>` only when every criterion passes;
+   otherwise output `FAIL` with the exact criterion IDs. Output `SKIPPED` only
+   in standalone mode without a blueprint.
+3. **Test Suite Runner:** Execute the repository's native test command. Output
+   `PASS`, `FAIL` (exact failing test names and assertions only), or
+   `SKIPPED`.
+4. **Type-Check & Build Verifier:** Run the repository's native type-check and
+   build commands. Output `PASS`, `FAIL` (exact file/line errors only), or
+   `SKIPPED`.
+5. **Linter & Formatting Auditor:** Run the repository's native linter and
+   formatter commands on modified files. Output `PASS`, `FAIL` (rule violations
+   only), or `SKIPPED`.
+6. **Repo Hygiene & Security Scan:** Inspect the full working-tree manifest
+   (`git diff HEAD` plus untracked non-ignored files), planned CREATE files,
+   temp/debug artifacts, and secrets. Output `CLEAN`, or `DIRTY` with exact file
+   paths.
 
 ### Phase 2: Audit Triage & Recovery
 
-1. Wait for all Phase 1 sub-agents to return.
+1. Wait for all Phase 1 sub-agents to return their receipts.
 2. **If any check fails:**
-   - Dispatch a single targeted fix sub-agent for the failing file(s) with the
-     exact error output.
-   - Re-run only the failed audit check (max 2 recovery attempts before
-     escalating to the user).
-3. **If all checks return `PASS` / `CLEAN` / `SKIPPED`:** Proceed immediately
-   to Phase 3.
+   - Dispatch one targeted fix sub-agent for the failing file(s). The fix
+     payload must include the relevant blueprint excerpt, the exact criterion
+     IDs, the exact error output, and the verbatim rule: change only what the
+     blueprint specifies, and report `BLOCKED` instead of inventing behavior.
+     Fixers may not invent.
+   - A `BLOCKED` receipt routes to `static-fire` replanning, never a code patch.
+   - Any source-file edit invalidates the max-q certification and every Phase 1
+     audit result, so restart the full Phase 1 audit batch and recompute the
+     full-tree fingerprint.
+   - Cap recovery at two attempts; after two, halt and escalate.
+3. **Before Phase 3 (when a blueprint exists):** Invoke a read-only full max-q
+   re-certification over the complete current diff and require `<N>/<N>`, zero
+   findings, and a fresh fingerprint. If re-certification edits any file or
+   finds issues, restart the full Phase 1 audit batch and recompute the
+   fingerprint, then re-certify. A failed re-certification must halt and
+   escalate; never commit an uncertified change.
+4. **If all checks return `PASS` / `CLEAN` / `SKIPPED`:** Proceed to Phase 3
+   after the read-only full max-q re-certification in step 3 passes, when
+   applicable.
 
 ### Phase 3: Commit & PR Landing (Git Sub-Agent)
 
 Dispatch a dedicated Git sub-agent to stage, commit, and (if requested)
-prepare/open the PR using the target repository's existing conventions:
+prepare/open the PR using the target repository's existing conventions. Commit
+only after the Phase 2 re-certification passed, when applicable:
 
-- **Detect Conventions:** Check the repository for `CONTRIBUTING.md`,
-  commitlint configs, PR templates (`.github/pull_request_template.md`), or
-  recent `git log` history, and determine the commit and PR style the repo
-  actually uses.
+- **Recompute Fingerprint:** Recompute the full-tree fingerprint immediately
+  before commit; a mismatch with the certified fingerprint is a halt.
+- **Stage Planned Files:** Stage and verify every planned CREATE file; no
+  planned file may remain untracked.
+- **Detect Conventions:** Check for `CONTRIBUTING.md`, commitlint configs, PR
+  templates (`.github/pull_request_template.md`), or recent `git log` history
+  to determine the commit and PR style the repo actually uses.
 - **Match the Repo:** Write commit messages and PR titles/descriptions in that
   style. Never impose a personal format.
 - **Atomic Commits:** Split distinct concerns into clean, atomic commits as the
   repo's history suggests, or use one overarching commit.
 - **PR Body:** Follow the repo's PR template if present; otherwise write a
-  clear summary of what changed, how it was verified, and any risks.
+  clear summary of what changed and how it was verified.
 
-### Phase 4: Mission Complete Report
+The Git sub-agent must return a receipt with commit hash(es), commit
+message(s), and files-changed count — no code output.
 
-Output a concise (< 100 words) final mission summary to the user confirming:
+## Phase 4: Telemetry Report
 
-- `STATIC-FIRE` → `LIFTOFF` → `MAX-Q` → `CATCH` status (`COMPLETE`)
-- Commit hash(es) and commit message(s)
-- Summary of verified checks
+Output telemetry only, ideally a compact table, using exactly these signals.
+Pipeline status is `COMPLETE | FAILED | BLOCKED`, never hardcoded:
+
+| Signal | Value |
+| --- | --- |
+| Pipeline status | `COMPLETE`, `FAILED`, or `BLOCKED` |
+| Spec checks | `<N>/<N>` plus full-tree fingerprint short hash, or `SKIPPED` without a blueprint |
+| Unit receipts | `<PASS> PASS / <FAIL> FAIL` |
+| Max-Q verdict | `MAX-Q PASSED` or `<n> findings`, or `SKIPPED` in standalone mode |
+| Tests | `PASS` / `FAIL` / `SKIPPED` |
+| Type-check & build | `PASS` / `FAIL` / `SKIPPED` |
+| Lint & format | `PASS` / `FAIL` / `SKIPPED` |
+| Hygiene | `CLEAN` / `DIRTY` |
+| Commit | `<hash> <message>` or `not committed` when halted |
+
+Never hardcode `COMPLETE`; the pipeline status must reflect the actual outcome.
+Keep the report under about 100 words. Mention any skipped or escalated check
+in one line. Never include code blocks or snippets, and report errors as codes
+or messages plus `file:line`. Never ask for implementation review.

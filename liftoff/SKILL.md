@@ -1,90 +1,138 @@
 ---
 name: Liftoff
-description: Orchestrate execution of an approved plan via maximum sub-agent parallelization, fanning out atomic tasks in dependency waves with lean context.
+description: Execute an approved static-fire blueprint verbatim with maximum sub-agent parallelization and a zero-read orchestrator that tracks structured PASS/FAIL receipts.
 ---
 
 # Liftoff
 
-Orchestrate the execution of an approved implementation plan using **maximum
-sub-agent parallelization**. Decompose work into the smallest possible
-independent units and fan out as many concurrent sub-agents as possible per
-wave while keeping the orchestrator's context window lean.
+Liftoff is blind, mechanical execution of the `static-fire` blueprint, using
+**maximum sub-agent parallelization**. The orchestrator is a scheduler, not an
+implementer or reviewer: it never reads implementation diffs or file contents.
+The blueprint is authoritative and workers have no architectural authority.
 
-**Standalone Mode:** When invoked directly without a prior `static-fire` report,
-treat the user-provided spec or prompt as the plan and proceed. When chained,
-consume the `static-fire` acceptance criteria and detected commands.
+**Standalone Mode:** When invoked directly without a prior `static-fire`
+blueprint, treat the user-provided spec as the blueprint. If that spec is not
+blueprint-grade or leaves architectural choices open, halt and ask or return to
+planning; never invent decisions. In standalone mode, execute the provided
+blueprint and stop after the final verification wave; do not hand off to
+`max-q`. Pipeline mode hands off.
 
-## Core Orchestration Principles
+## Zero-Read Orchestration
 
-1. **Never Implement Directly** — As the orchestrator, do not write code, read
-   large files, or run verbose test logs in your own context. Delegate 100% of
-   file operations and shell executions to sub-agents.
-2. **Maximum Fan-Out (1 File / 1 Unit = 1 Sub-Agent)** — Never bundle multiple
-   independent files or modules into a single sub-agent if they can be built
-   concurrently. Split tasks down to the finest atomic granularity (e.g.,
-   1 component = 1 sub-agent, 1 test file = 1 sub-agent, 1 API route =
-   1 sub-agent) and spawn the entire wave in a single parallel tool-call batch.
-3. **Strict File-Ownership Partitioning** — Every concurrent sub-agent in a
-   wave must own a strictly disjoint set of files. Two sub-agents in the same
-   wave must never write to the same file.
-4. **Minimal Context Injection** — Pass each sub-agent only its owned file
-   path(s), exact shared type/interface contracts, and acceptance criteria.
-   Never pass full conversation history or unrelated repo files.
-5. **Compact Handoffs (< 150 words)** — Sub-agents must return only a terse
-   structured receipt—never full file contents or raw terminal dumps.
+The orchestrator schedules work and validates receipts; it does not inspect the
+codebase.
+
+1. **Blueprint Is the Only Spec** — The plan from `static-fire` is the complete
+   contract. No design work happens here.
+2. **Never Read Implementation** — The orchestrator must not open, cat, diff,
+   or inspect implementation file contents or diffs at any point during or
+   after liftoff. Its context stays limited to the blueprint, dispatch
+   receipts, and command telemetry.
+3. **Receipt-Only Progress** — Progress is tracked solely through structured
+   PASS/FAIL receipts mapped to blueprint units and criteria. A unit is
+   complete only when its receipt has `STATUS: PASS`, `BLUEPRINT_MATCH: PASS`,
+   every criterion PASS, and `DEVIATIONS: none`.
+4. **No Architectural Authority** — Sub-agents execute the blueprint verbatim
+   and may not invent abstractions.
+5. **Progress Ledger** — Keep a minimal table, updated only from receipts:
+
+   | Unit | Owned files | Blueprint criteria | Receipt status |
+   | --- | --- | --- | --- |
+   | `<unit id>` | `<exact paths>` | `<criterion ids>` | `PENDING` |
+
+## Blind Mechanical Execution (Sub-Agent Contract)
+
+Every worker sub-agent operates under the same contract.
+
+- **Required:** Use the exact paths, names, signatures, schemas, props, edge
+  cases, and error rules in the blueprint. Modify only owned files. Report any
+  deviation.
+- **Forbidden:** Choose libraries, patterns, or layers; add files,
+  dependencies, or exports not in the blueprint; rename; change signatures or
+  schemas; refactor beyond scope; "improve" behavior; resolve ambiguity by
+  judgment.
+- **Ambiguity rule:** If the blueprint is incomplete, contradictory, or
+  unimplementable, stop and return `STATUS: FAIL` with `BLOCKED: <gap>`; never
+  guess or invent.
+
+Any unapproved abstraction or deviation is an automatic `FAIL` and a `max-q`
+`BLOCKER`.
 
 ## Adaptive Fan-Out Scaling
 
-- **Small changes (1–2 files and fewer than 50 lines):** Use a single worker
+- **Small changes (1–2 files and fewer than 50 lines):** Use one worker
   sub-agent; do not spin up a full wave.
-- **Multi-file or cross-module changes (3+ files or 50+ lines):** Engage full
-  maximum parallel fan-out across dependency waves.
+- **Multi-file or cross-module changes (3+ files or 50+ lines):** Use full
+  parallel fan-out across dependency waves.
 
 ## Execution Workflow
 
 ### Phase 1: Fine-Grained Decomposition & Wave Planning
 
-Apply the Adaptive Fan-Out Scaling above, then break the plan (from
-`static-fire`, or the user's spec when standalone) into atomic tasks grouped
+Before starting a wave, confirm every unit can be derived from the blueprint
+without invention. If the blueprint is incomplete or contradictory, return
+`STATUS: FAIL` with `BLOCKED: <gap>` and start no wave. Then group the units
 into dependency waves:
 
-- **Wave 0 (Contracts First — if needed):** If multiple parallel agents need
-  shared types, schemas, or interfaces that do not exist yet, spawn 1 sub-agent
-  to write the shared contract file first so all Wave 1 agents can build
-  against it simultaneously without conflicts.
-- **Wave 1 (Max-Width Parallel Fan-Out):** Spawn all independent implementation
-  tasks simultaneously in one batch (e.g., individual modules, routes, UI
-  components, database queries, and unit test files).
-- **Wave 2+ (Integration & Wiring):** Spawn parallel sub-agents for tasks that
-  import or wire together Wave 1 outputs (e.g., barrel exports, router
-  registration, main entry points).
-- **Final Wave (Parallel Verification):** Simultaneously dispatch separate
-  sub-agents for independent checks (e.g., Sub-Agent A runs unit tests,
-  Sub-Agent B runs type-checking/linting, Sub-Agent C runs build verification).
+- **Wave 0 (Contracts First — only when declared):** Only when the blueprint
+  declares a shared contract unit that parallel agents need, dispatch one
+  sub-agent for that unit before the rest.
+- **Wave 1 (Max-Width Parallel Fan-Out):** Dispatch all independent units
+  simultaneously in one batch.
+- **Wave 2+ (Integration & Wiring):** Dispatch units that import or wire
+  together earlier wave outputs.
+- **Final Wave (Parallel Verification):** Dispatch parallel verification units
+  as defined by the blueprint.
 
 ### Phase 2: Sub-Agent Dispatch Payload
 
-Dispatch every sub-agent in the active wave simultaneously using this strict
+Dispatch every sub-agent in the active wave simultaneously using this exact
 template:
 
 ```text
 Task ID: <wave>.<number>
-Objective: <1-sentence imperative goal>
+Blueprint Unit: <exact unit/section from static-fire>
+Objective: <1-sentence imperative from the blueprint>
 Owned Files (Read/Write): <exact file path(s) — strictly disjoint from sibling agents>
-Reference Contracts (Read-Only): <exact shared types, schemas, or signatures needed>
-Acceptance Criteria: <specific testable conditions>
+Blueprint Excerpt (Authoritative): <exact signatures, schemas, props, edge cases, and error rules for this unit>
+Acceptance Criteria: <exact machine-verifiable criteria from the blueprint>
+Execution Rule: Implement verbatim. Do not add files, dependencies, exports, abstractions, or behavior not in the blueprint. If the blueprint is incomplete or contradictory, stop and return STATUS: FAIL with BLOCKED: <gap>.
 Output Constraint: Return ONLY:
+- UNIT: <U<n>>
 - STATUS: PASS | FAIL
+- BLUEPRINT_MATCH: PASS | FAIL
 - FILES_MODIFIED: <list>
-- EXPORTS_CHANGED: <new/updated function or type signatures, or "none">
-- ERRORS: <concise error summary if FAIL, else "none">
+- EXPORTS_CHANGED: <must match the blueprint exactly, or "none">
+- CRITERIA: <criterion id: PASS|FAIL — evidence: <command/assertion + exit code | file:line>; ...>
+- DEVIATIONS: none | <any unapproved difference; any entry forces FAIL>
+- BLOCKED: none | <blueprint gap or unimplementable requirement>
+- ERRORS: <concise summary if FAIL, else "none">
 ```
+
+Every criterion needs evidence; a bare PASS without evidence is invalid. Any
+non-none `BLOCKED` forces `STATUS: FAIL`.
 
 ### Phase 3: Synchronization & Recovery
 
-1. Wait for all sub-agents in the current wave to complete.
-2. If any sub-agent reports `FAIL`, immediately spawn a targeted fix sub-agent
-   for only that failed file while keeping intact work untouched.
-3. Once the Final Verification wave returns `PASS` across all checks, hand off
-   to `max-q` for adversarial review. Do not stage or commit here; `catch`
-   owns all landing and commit.
+1. Wait for all sub-agents in the wave.
+2. Validate receipts against the blueprint only; never inspect files, contents,
+   or diffs. Any `FAIL`, `BLUEPRINT_MATCH: FAIL`, non-empty `BLOCKED`,
+   non-empty `DEVIATIONS`, or missing criterion (including missing evidence)
+   means the unit is not done.
+3. Spawn a targeted fix sub-agent for the failed unit with the same blueprint
+   excerpt and exact error. Cap ordinary `FAIL` retries at two attempts per unit.
+   If the unit still fails after two attempts, halt and escalate to the user or a
+   `static-fire` replan; do not loop. If a receipt is `BLOCKED` or reports a
+   blueprint gap, do not fix by invention: escalate immediately, without retry,
+   and route to a `static-fire` replan or the user.
+4. Once the Final Verification wave returns PASS, in pipeline mode hand off to
+   `max-q` with the blueprint, progress ledger, detected commands, and receipts
+   only; no contents or diffs. In standalone mode, stop after the final
+   verification wave. Do not stage or commit; `catch` owns landing.
+
+## Forbidden
+
+- Never add a step where the orchestrator reads implementation files or git
+  diffs.
+- Never allow workers to "fill in" missing design details.
+- Never remove standalone mode or adaptive scaling.
