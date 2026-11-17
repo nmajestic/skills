@@ -1,6 +1,6 @@
 ---
 name: Max Q
-description: Prove 1:1 compliance between the static-fire blueprint and the git diff using parallel adversarial review sub-agents, then hand off to catch.
+description: Prove 1:1 compliance between the static-fire blueprint and the git diff through a mandatory 3-pass adversarial review loop, then hand off to catch.
 ---
 
 # Max Q
@@ -8,9 +8,10 @@ description: Prove 1:1 compliance between the static-fire blueprint and the git 
 Max-Q's primary job is proving 1:1 spec compliance between the `static-fire`
 blueprint and the actual `git diff`, covering every target file, signature,
 type/schema/prop, edge case, error rule, constraint, and acceptance criterion.
-Adversarial defect hunting is secondary. A `MAX-Q PASSED` verdict is the
-certification that replaces manual human inspection: the user never has to read
-the implementation.
+Adversarial defect hunting is secondary. Every diff runs through a
+**mandatory 3-pass review loop**, and a `MAX-Q PASSED` verdict is declared only
+after all three passes return `CLEAR`. That verdict is the certification that
+replaces manual human inspection: the user never has to read the implementation.
 
 **Standalone Mode:** Standalone mode requires a `static-fire` blueprint supplied
 by the caller, including its authoritative `Blueprint criteria total: <N>`.
@@ -39,13 +40,27 @@ against the supplied blueprint and report without dispatching fixes.
 7. **Actionable Findings Only** — No style nitpicks; only correctness, spec,
    security, performance, or requirement defects.
 
-## Adaptive Review Scaling
+## Mandatory 3-Pass Review Loop
 
-- **Small changes (1–2 files, fewer than 50 lines):** Use one combined reviewer
-  only if it covers all four review dimensions and every checklist row;
-  otherwise use the full four-agent fan-out.
-- **Multi-file or cross-module changes (3+ files or 50+ lines):** Engage the
-  full four-dimension parallel fan-out.
+Every diff, regardless of size, runs through three sequential review passes.
+There is no early exit: all three passes must complete and return `CLEAR`
+before `MAX-Q PASSED` is declared.
+
+- **Pass 1/3 — Structural & Spec Compliance:** Verify 1:1 adherence to the
+  `static-fire` blueprint — exact file paths, function and type signatures,
+  contracts, and acceptance criteria.
+- **Pass 2/3 — Adversarial Edge Cases & State:** Stress-test boundary
+  conditions, null/empty states, error paths, race conditions, and any side
+  effects introduced by fixes from Pass 1.
+- **Pass 3/3 — Final Regression & Clean-Room Sweep:** Re-audit the cumulative
+  `git diff` from scratch with fresh sub-agents to ensure zero regressions,
+  security flaws, or subtle logic bugs remain.
+
+Within any pass, fan out the four specialized review sub-agents in parallel
+across the current `git diff`. Each pass spawns fresh, stateless review
+sub-agents that receive only the latest `git diff` and the `static-fire`
+blueprint — never carry verbose logs from earlier passes into the
+orchestrator's context.
 
 ## Execution Workflow
 
@@ -67,7 +82,8 @@ a full addition. `DIFF_FINGERPRINT` covers that full set with canonical path
 ordering. The Blueprint Compliance Auditor must review untracked file contents,
 not merely hash them.
 
-Then spawn the review sub-agents in a single parallel batch:
+In every pass, spawn the four specialized review sub-agents in a single
+parallel batch:
 
 1. **Sub-Agent 1 — Blueprint Compliance Auditor (Primary):**
    - **Focus:** Check the full checklist against the review set; each row
@@ -94,9 +110,9 @@ Then spawn the review sub-agents in a single parallel batch:
    - **Input:** review set (tracked diff + untracked files) of modified
      implementation files.
 
-**Optional Scaling Rule:** If the diff spans more than 8 files, partition the
-compliance auditor by module so every checklist row is covered exactly once,
-then aggregate.
+**Pass Scaling Rule:** In every pass, if the diff spans more than 8 files,
+partition the compliance auditor by module so every checklist row is covered
+exactly once, then aggregate.
 
 ### Phase 2: Sub-Agent Dispatch Payload
 
@@ -104,6 +120,7 @@ Use this exact template for each review sub-agent:
 
 ```text
 Reviewer Role: <Blueprint Compliance | Correctness | Contracts | Security & Perf>
+Pass: <n>/3
 Blueprint Specification: <exact relevant blueprint sections; full blueprint for compliance>
 Blueprint Criteria Total: <N>
 Target Diff / Files: <exact file paths or diff hunk>
@@ -118,22 +135,29 @@ Output Constraint: Return ONLY this schema. If no issues exist, return STATUS: C
 
 ### Phase 3: Triage & Verdict
 
-1. Wait for all reviewers.
-2. Declare `MAX-Q PASSED` only when `SPEC_COMPLIANCE` is `<N>/<N>` with evidence
-   for every row, all reviewers return `CLEAR`, there are zero `BLOCKER`/`MAJOR`
+1. Wait for all four reviewers in the current pass.
+2. A pass is `CLEAR` only when `SPEC_COMPLIANCE` is `<N>/<N>` with evidence for
+   every row, all reviewers return `CLEAR`, there are zero `BLOCKER`/`MAJOR`
    findings, there are zero unapproved deviations, and the reported
    `DIFF_FINGERPRINT` matches the complete current diff. Any missing or
    unverified row is a FAIL.
-3. If defects exist, group by file ownership and spawn targeted fix sub-agents
-   in parallel with the exact finding and relevant blueprint excerpt. After any
-   remediation edit, rerun **all four reviewers** over the complete current diff
-   and recompute `DIFF_FINGERPRINT`; prior verdicts are stale and cannot be
-   reused. Cap remediation at two loops. After two loops without `CLEAR`, halt,
-   report unresolved findings, and escalate; never declare PASS.
+3. If `BLOCKER` or `MAJOR` defects are found in a pass:
+   - Group defects by file ownership (disjoint sets) and dispatch fix
+     sub-agents in parallel, each receiving the exact finding and the relevant
+     blueprint excerpt; no invention.
+   - Re-run that pass to confirm `CLEAR` before advancing to the next pass.
+   - Cap remediation retries per pass at 2. After two retries without `CLEAR`,
+     halt and escalate to the user; never declare PASS.
 4. If the defect is a blueprint gap or ambiguity, escalate to `static-fire`
    replanning; do not patch by invention.
-5. Hand off to `catch` with the blueprint, progress ledger, detected commands,
+5. **No early exit:** all three passes must complete and return `CLEAR` before
+   `MAX-Q PASSED` is declared. Pass 3 re-audits the cumulative `git diff` from
+   scratch with fresh sub-agents; a verdict from an earlier pass is stale after
+   any edit and cannot be reused. After any remediation edit, rerun the pass's
+   four reviewers over the complete current diff and recompute
+   `DIFF_FINGERPRINT`.
+6. Hand off to `catch` with the blueprint, progress ledger, detected commands,
    authoritative total `N`, compliance matrix, final `DIFF_FINGERPRINT`, and
    receipts — telemetry only, no code dumps.
-6. When `catch` invokes re-certification, run read-only: do not dispatch fix
+7. When `catch` invokes re-certification, run read-only: do not dispatch fix
    agents; report findings and stop.
