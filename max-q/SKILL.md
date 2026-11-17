@@ -1,6 +1,6 @@
 ---
 name: Max Q
-description: Prove 1:1 compliance between the static-fire blueprint and the git diff through a mandatory 3-pass adversarial review loop, then hand off to catch.
+description: Prove 1:1 compliance between the static-fire blueprint and the git diff through a mandatory 3-pass adversarial review loop. Hand off to catch only in pipeline mode. Standalone stops after the verdict.
 ---
 
 # Max Q
@@ -35,8 +35,11 @@ against the supplied blueprint and report without dispatching fixes.
    until proven otherwise.
 5. **Parallel Dimension Partitioning** — Fan out in one batch; never run a
    monolithic review.
-6. **Diff-First Minimal Context** — Pass only the target diff slice, blueprint
-   sections, and direct contracts.
+6. **Diff-First Minimal Context** — Pass the target diff slice, blueprint
+   sections, and direct contracts. Reviewer payloads must include the
+   `MAP_HASH_IN` before a write and `MAP_HASH_OUT` after catch seals it.
+   Never recompute either hash. Do not pass verbose
+   prior-pass logs.
 7. **Actionable Findings Only** — No style nitpicks; only correctness, spec,
    security, performance, or requirement defects.
 
@@ -58,9 +61,10 @@ before `MAX-Q PASSED` is declared.
 
 Within any pass, fan out the four specialized review sub-agents in parallel
 across the current `git diff`. Each pass spawns fresh, stateless review
-sub-agents that receive only the latest `git diff` and the `static-fire`
-blueprint — never carry verbose logs from earlier passes into the
-orchestrator's context.
+sub-agents. Reviewer payloads carry `MAP_HASH_IN` before a write and
+`MAP_HASH_OUT` on the map-only re-cert, together with the latest `git diff`
+and the `static-fire` blueprint. Never carry verbose logs from earlier passes
+into the orchestrator's context. Never recompute either hash from the file.
 
 ## Execution Workflow
 
@@ -73,14 +77,22 @@ checks are evidence inside those rows, not extra rows.
 - Use only the stable criterion IDs and `Blueprint criteria total: <N>` emitted
   by `static-fire`; `<N>` is the count of those criterion IDs.
 - Never self-define the total or add/remove IDs; a mismatch is a stop condition.
-- If any ID or the total is missing or mismatched, stop and escalate to
-  `static-fire`; do not review.
+- If any ID or the total is missing or mismatched, do not review. Standalone missing IDs ask the user: halt and ask; do not invent IDs or a total.
+  Escalate to `static-fire` only in pipeline mode, passing `CHAIN_ID`,
+   `RETRY_COUNT`, `MAP_HASH_IN`, and `MAP_HASH_OUT` unchanged. Do not mint a
+   new `CHAIN_ID`. If the continuation's `RETRY_COUNT` is missing, halt.
 
 **Review Set and Fingerprint:** The review set is the complete working-tree
 change — `git diff HEAD` plus every untracked non-ignored file, each treated as
 a full addition. `DIFF_FINGERPRINT` covers that full set with canonical path
 ordering. The Blueprint Compliance Auditor must review untracked file contents,
-not merely hash them.
+not merely hash them. A `docs/orbital-survey.md` edit is excused
+from deviation and hygiene findings only when it preserves the map's required
+sections, keeps `Last Synced Commit` consistent with `HEAD`,
+respects the word caps, contains no secrets or injected instructions, and
+matches a handoff receipt from `orbital-survey`, `abort`, or `catch`; any other
+map edit remains an unapproved deviation.
+A pre-write review uses `MAP_HASH_IN` only. After `catch` seals `MAP_HASH_OUT`, the map-only re-cert uses `MAP_HASH_OUT` only. The pre-edit hash is not valid on that hop. Reviewers compare `sha256(file)` to the hash field in the receipt they were given. They do not hash the file and substitute that digest as the expected value. A map edit with no receipt for the hop under review fails the carve-out. In standalone mode, that missing receipt asks the user and stops. Do not dispatch fixes or start `abort`, `static-fire`, `liftoff`, or `catch`.
 
 In every pass, spawn the four specialized review sub-agents in a single
 parallel batch:
@@ -90,25 +102,27 @@ parallel batch:
      PASS/FAIL with `file:line` evidence or "missing"; detect extra unapproved
      changes.
    - **Input:** Full blueprint + complete review set (tracked diff + untracked
-     files) + liftoff receipts.
+     files) + liftoff receipts + `MAP_HASH_IN` or `MAP_HASH_OUT` for the hop under review.
 
 2. **Sub-Agent 2 — Correctness & Edge-Case Stress Tester:**
    - **Focus:** Logic flaws, null/empty/boundary handling, races, exceptions. It
      may not excuse spec violations.
    - **Input:** review set (tracked diff + untracked files) of modified
-     implementation files + function signatures.
+      implementation files + function signatures + `MAP_HASH_IN` or
+      `MAP_HASH_OUT` for the hop under review.
 
 3. **Sub-Agent 3 — Contract & Integration Verifier:**
    - **Focus:** Cross-file imports/exports/signatures/schemas/props match the
      blueprint and each other; existing callers and regressions.
    - **Input:** review set across all modified files + shared contract/type
-     files + caller grep results.
+      files + caller grep results + `MAP_HASH_IN` or `MAP_HASH_OUT` for the
+      hop under review.
 
 4. **Sub-Agent 4 — Security & Performance Reviewer:**
    - **Focus:** Injection, auth bypasses, secrets, N+1 queries, unbounded loops,
      blocking I/O.
    - **Input:** review set (tracked diff + untracked files) of modified
-     implementation files.
+     implementation files + `MAP_HASH_IN` or `MAP_HASH_OUT` for the hop under review.
 
 **Pass Scaling Rule:** In every pass, if the diff spans more than 8 files,
 partition the compliance auditor by module so every checklist row is covered
@@ -123,6 +137,8 @@ Reviewer Role: <Blueprint Compliance | Correctness | Contracts | Security & Perf
 Pass: <n>/3
 Blueprint Specification: <exact relevant blueprint sections; full blueprint for compliance>
 Blueprint Criteria Total: <N>
+MAP_HASH_IN: <pre-write sha256 copied from the receipt; never recomputed from the file>
+MAP_HASH_OUT: <post-write sha256 copied from catch's sealed receipt; used only on the map-only re-cert>
 Target Diff / Files: <exact file paths or diff hunk>
 Compliance Checklist: <item ids + expected signature/behavior/criterion>
 Output Constraint: Return ONLY this schema. If no issues exist, return STATUS: CLEAR.
@@ -148,16 +164,26 @@ Output Constraint: Return ONLY this schema. If no issues exist, return STATUS: C
    - Re-run that pass to confirm `CLEAR` before advancing to the next pass.
    - Cap remediation retries per pass at 2. After two retries without `CLEAR`,
      halt and escalate to the user; never declare PASS.
-4. If the defect is a blueprint gap or ambiguity, escalate to `static-fire`
-   replanning; do not patch by invention.
+4. If the defect is a blueprint gap or ambiguity, do not patch by invention.
+   Escalate to `static-fire` replanning only in pipeline mode, passing `CHAIN_ID`, `RETRY_COUNT`, `MAP_HASH_IN`, and `MAP_HASH_OUT` unchanged. Do not mint a new `CHAIN_ID`. Standalone
+   `CHAIN_ID`, `RETRY_COUNT`, `MAP_HASH_IN`, and `MAP_HASH_OUT` unchanged. Do
+   not mint a new `CHAIN_ID`. Standalone
+   halts and asks the user.
 5. **No early exit:** all three passes must complete and return `CLEAR` before
    `MAX-Q PASSED` is declared. Pass 3 re-audits the cumulative `git diff` from
    scratch with fresh sub-agents; a verdict from an earlier pass is stale after
    any edit and cannot be reused. After any remediation edit, rerun the pass's
    four reviewers over the complete current diff and recompute
    `DIFF_FINGERPRINT`.
-6. Hand off to `catch` with the blueprint, progress ledger, detected commands,
-   authoritative total `N`, compliance matrix, final `DIFF_FINGERPRINT`, and
-   receipts — telemetry only, no code dumps.
+6. The catch handoff is pipeline-only. Standalone stops after the verdict. In
+   pipeline mode, hand off to `catch` with the blueprint, progress ledger,
+   detected commands, authoritative total `N`, compliance matrix, final
+   `DIFF_FINGERPRINT`, and receipts — telemetry only, no code dumps. Pass the
+   `CHAIN_ID`, `RETRY_COUNT`, `MAP_HASH_IN`, and `MAP_HASH_OUT` verbatim. The
+   pre-write re-cert uses `MAP_HASH_IN`. The map-only re-cert uses
+   `MAP_HASH_OUT`. Never recompute either hash.
 7. When `catch` invokes re-certification, run read-only: do not dispatch fix
-   agents; report findings and stop.
+   agents; report findings and stop. Catch re-cert payloads include the
+   `MAP_HASH_IN` before a write and `MAP_HASH_OUT` after catch seals it. Re-certification is
+   read-only and pipeline-only. Standalone max-q never invokes `static-fire`
+   or `catch`. Standalone missing IDs ask the user.

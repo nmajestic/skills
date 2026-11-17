@@ -16,8 +16,9 @@ understand what will change. Every design decision is closed here, before
 execution begins.
 
 **Standalone Mode:** When `static-fire` is invoked directly, produce the
-blueprint and the report, then stop. Do not hand off to `liftoff`. Pipeline mode
-is the only mode that hands off, and it hands off only on a `HIGH` tier.
+blueprint and the report, then stop. Standalone stops after the report. Do not
+hand off or forward to `liftoff`, `max-q`, or `catch`. Pipeline mode is the
+only mode that hands off, and it hands off only on a `HIGH` tier.
 
 ## Blueprint-Grade Standard
 
@@ -131,20 +132,37 @@ Emit the following, every time:
 - **Confidence Tier:** [HIGH | MEDIUM | LOW]
 - **Next Action:** [Proceed | Close Gaps and Re-tier | Ask User]
 
+## Map-First Context Loading
+
+Before broad codebase exploration, check for `docs/orbital-survey.md` in the
+target repository.
+
+- If it is present and fresh — its `Last Synced Commit` stores a bare HEAD hash (no timestamp) that is an ancestor of `HEAD` (`git merge-base --is-ancestor <map-commit> HEAD`) AND every mapped path is unchanged since that commit (`git diff --quiet <map-commit> -- <mapped-paths>`) — ingest it directly to build the blueprint; do not re-explore what the map already documents.
+- If it is missing, stale (its `Last Synced Commit` is not a bare HEAD hash, is not an ancestor of `HEAD`, or a mapped path changed since it), or the target modules are unmapped: in pipeline
+  mode, trigger `orbital-survey` first — at most once per planning session;
+  if the map is still unusable afterwards, halt and ask the user instead of
+  re-triggering. In standalone mode, never invoke another skill: note the gap
+  and either ask the user or fall back to direct exploration.
+
+Use the map's `Discovered Commands` as a starting point for Command Discovery,
+but verify against repo config files.
+
 ## Command Discovery
 
 During evaluation, inspect the repository root for `package.json`,
 `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile`, or CI workflows
 (`.github/workflows`) to detect the project's native test, lint, type-check,
 and build commands. Record the exact commands that were discovered. Also
-record `none` explicitly for each check that is not configured, then pass
-them forward to `catch`. `catch` may skip only checks recorded as `none`,
-never a check recorded with a command. Never assume a language-specific
-runner.
+record `none` explicitly for each check that is not configured. List every
+check in Detected Commands. Pass those commands forward to `catch` only in pipeline mode.
+Standalone stops after the report and does not forward them.
+`catch` may skip only checks recorded as `none`, never a check recorded with
+a command. Never assume a language-specific runner.
 
 ## Workflow
 
-1. Read the request and the current context.
+1. Read the request and the current context, loading `docs/orbital-survey.md`
+   first when it exists.
 2. Discover the repository's native commands (see Command Discovery).
 3. Draft the blueprint to the Blueprint-Grade Standard and close every open
    decision in it.
@@ -154,5 +172,29 @@ runner.
 6. Assign exactly one confidence tier. Assign `HIGH` only when the blueprint
    carries zero architectural ambiguity.
 7. Report in the required output format, then act according to the tier's
-   policy. In pipeline mode, hand the blueprint to `liftoff` as the sole spec,
-   and only on `HIGH`. In standalone mode, stop after the report.
+   policy. Standalone stops after the report and does not forward to
+   `liftoff`, `max-q`, or `catch`. In pipeline mode, hand the blueprint to
+   `liftoff` as the sole spec, and only on `HIGH`. On that handoff, copy this
+   object unchanged. Do not substitute a static-fire receipt. Never recompute
+   a hash from the file. Do not substitute `0` for `RETRY_COUNT` on a
+   continuation. A missing `RETRY_COUNT` is legal only when `CHAIN_ID` is new.
+
+   ```text
+   MODE: pipeline
+   CHAIN_ID: <incoming id, or a new id when this is not a continuation>
+   RETRY_COUNT: <incoming count unchanged; 0 only when CHAIN_ID is new>
+   MAP_RECEIPT_ID: <incoming id or none>
+   MAP_HASH_IN: <sha256 or none>
+   MAP_HASH_OUT: <sha256 or none>
+   ```
+
+   If this session has no producer receipt and the map exists, `MAP_HASH_IN`
+   is the sha256 of the blob bytes (`git show <commit>:docs/orbital-survey.md`
+   piped to `sha256sum`), and only when
+   `git diff --quiet <commit> -- docs/orbital-survey.md`. Do not use
+   `git rev-parse` output as that hash. On a continuation, copy `CHAIN_ID`
+   and `RETRY_COUNT` unchanged. If that continuation's count is missing, halt
+   and do not hand off. A dirty map with no in-session receipt asks the user
+   and stops. Do not start `abort`, `orbital-survey`, `liftoff`, `max-q`, or
+   `catch`. Do not hash that dirty file and call it a receipt. A missing map
+   is not a hash failure.

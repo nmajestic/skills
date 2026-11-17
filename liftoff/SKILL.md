@@ -12,10 +12,10 @@ The blueprint is authoritative and workers have no architectural authority.
 
 **Standalone Mode:** When invoked directly without a prior `static-fire`
 blueprint, treat the user-provided spec as the blueprint. If that spec is not
-blueprint-grade or leaves architectural choices open, halt and ask or return to
-planning; never invent decisions. In standalone mode, execute the provided
-blueprint and stop after the final verification wave; do not hand off to
-`max-q`. Pipeline mode hands off.
+blueprint-grade or leaves architectural choices open, ask the user and stop;
+never invent decisions. Do not route to `static-fire` in standalone mode. In
+standalone mode, execute the provided blueprint and stop after the final
+verification wave; do not hand off to `max-q`. Pipeline mode hands off.
 
 ## Zero-Read Orchestration
 
@@ -96,6 +96,8 @@ Objective: <1-sentence imperative from the blueprint>
 Owned Files (Read/Write): <exact file path(s) — strictly disjoint from sibling agents>
 Blueprint Excerpt (Authoritative): <exact signatures, schemas, props, edge cases, and error rules for this unit>
 Acceptance Criteria: <exact machine-verifiable criteria from the blueprint>
+Incoming CHAIN_ID: <id or new>
+Incoming RETRY_COUNT: <n or none>
 Execution Rule: Implement verbatim. Do not add files, dependencies, exports, abstractions, or behavior not in the blueprint. If the blueprint is incomplete or contradictory, stop and return STATUS: FAIL with BLOCKED: <gap>.
 Output Constraint: Return ONLY:
 - UNIT: <U<n>>
@@ -106,11 +108,18 @@ Output Constraint: Return ONLY:
 - CRITERIA: <criterion id: PASS|FAIL — evidence: <command/assertion + exit code | file:line>; ...>
 - DEVIATIONS: none | <any unapproved difference; any entry forces FAIL>
 - BLOCKED: none | <blueprint gap or unimplementable requirement>
+- CHAIN_ID: <incoming id>
+- RETRY_COUNT: <incoming + 1>
 - ERRORS: <concise summary if FAIL, else "none">
 ```
 
 Every criterion needs evidence; a bare PASS without evidence is invalid. Any
-non-none `BLOCKED` forces `STATUS: FAIL`.
+non-none `BLOCKED` forces `STATUS: FAIL`. A missing `Incoming RETRY_COUNT` means
+0 only when `CHAIN_ID` is new. A continuation with the same `CHAIN_ID` and a
+missing count halts. Do not reset the cap to 0. Set returned `RETRY_COUNT` to
+incoming + 1. Reject a lower count. Halt before dispatching an attempt above
+2. On a standalone retry cap or `BLOCKED` receipt, ask the user and stop. Do
+not start `abort`, `static-fire`, `max-q`, or `catch`.
 
 ### Phase 3: Synchronization & Recovery
 
@@ -119,16 +128,29 @@ non-none `BLOCKED` forces `STATUS: FAIL`.
    or diffs. Any `FAIL`, `BLUEPRINT_MATCH: FAIL`, non-empty `BLOCKED`,
    non-empty `DEVIATIONS`, or missing criterion (including missing evidence)
    means the unit is not done.
-3. Spawn a targeted fix sub-agent for the failed unit with the same blueprint
-   excerpt and exact error. Cap ordinary `FAIL` retries at two attempts per unit.
-   If the unit still fails after two attempts, halt and escalate to the user or a
-   `static-fire` replan; do not loop. If a receipt is `BLOCKED` or reports a
-   blueprint gap, do not fix by invention: escalate immediately, without retry,
-   and route to a `static-fire` replan or the user.
+3. If a receipt is `BLOCKED` or reports a blueprint gap, do not fix by
+   invention and do not retry. In pipeline mode, route to a `static-fire`
+   replan. Standalone BLOCKED asks the user and stops. Do not route to
+   `static-fire` in standalone mode. For any other failed unit, a missing
+   `Incoming RETRY_COUNT` means 0 only when `CHAIN_ID` is new. A continuation
+   with a missing count halts. Do not reset the cap to 0. On a standalone
+   retry cap, ask the user and stop. Do not start `abort`, `static-fire`,
+   `max-q`, or `catch`. Halt before dispatching an attempt above 2. On every
+   pipeline replan, pass `CHAIN_ID`, `RETRY_COUNT`, `MAP_HASH_IN`, and
+   `MAP_HASH_OUT` unchanged. Do not recompute either hash. Do not mint a new
+   `CHAIN_ID`. Pass
+   pipeline replan.
+   If that gate allows dispatch, spawn a targeted fix sub-agent with the
+   same blueprint excerpt, exact error, and `Incoming RETRY_COUNT: <n>`. Set
+   returned `RETRY_COUNT` to incoming + 1 and pass it forward. Reject a lower
+   count than the incoming count. In standalone mode, do not invoke
+   `static-fire`; stop after the final verification wave.
 4. Once the Final Verification wave returns PASS, in pipeline mode hand off to
    `max-q` with the blueprint, progress ledger, detected commands, and receipts
-   only; no contents or diffs. In standalone mode, stop after the final
-   verification wave. Do not stage or commit; `catch` owns landing.
+   only; no contents or diffs. Pass `CHAIN_ID`, `RETRY_COUNT`, `MAP_HASH_IN`,
+   and `MAP_HASH_OUT` verbatim. Never recompute a hash. In standalone mode, stop
+   after the final verification wave. Do not stage or commit; `catch` owns
+   landing.
 
 ## Forbidden
 
