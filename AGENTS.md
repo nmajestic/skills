@@ -1,8 +1,5 @@
 # AGENTS.md
 
-Read [docs/codebase-rules.md](docs/codebase-rules.md) before making changes.
-Product vision: [docs/product-brief.md](docs/product-brief.md). Architecture: [docs/architecture.md](docs/architecture.md).
-
 ## Mandatory Build Workflow (`static-fire` → `liftoff` → `max-q` → `catch`)
 
 All build, implementation, scaffolding, bug-fix, and refactoring requests must
@@ -25,14 +22,13 @@ canonical names below.
 
 4. **`catch` (Deterministic Audit & Landing)**
    - **Trigger:** Automatically invoked once `max-q` returns `CLEAR`.
-   - **Action:** Fan out parallel sub-agents to run tests, type-checks, linters, and repo hygiene scans. Once all pass, stage and commit changes (and prepare/open PRs if requested) using strictly lowercase `<label>(<optional-scope>): <description>` formatting.
+   - **Action:** Fan out parallel sub-agents to run tests, type-checks, linters, and repo hygiene scans. Once all pass, stage and commit changes (and prepare/open PRs if requested) following the target repository's existing Git and PR conventions.
 
 ### 2. Execution Guardrails
 
 - **Zero Bypass (Pipeline Mode):** For general build, implementation, bug-fix, or refactoring requests, never write code or commit changes outside the 4-stage sequence.
 - **Read-Only Exception:** Skip the pipeline only for strictly read-only requests (e.g., explaining existing code, answering conceptual questions, or inspecting logs).
-- **Git & PR Enforcement:** Every commit message and PR title must be 100% lowercase, use imperative present tense (`add`, `fix`, `extract`), omit trailing periods, and use only allowed labels (`feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `chore`, `style`).
-- **PR Body:** Must contain exactly three sections: `## summary`, `## verification`, `## risks`.
+- **Git & PR Conventions:** Follow the target repository's existing Git and PR conventions (`CONTRIBUTING.md`, commitlint configs, PR templates, or recent `git log` history). Do not impose a personal commit style.
 
 ### 3. Dual-Mode Execution
 
@@ -59,7 +55,6 @@ canonical names below.
   lines), use 1 worker sub-agent in `liftoff` and 1 combined reviewer in
   `max-q`. Engage full parallel fan-out for multi-file or cross-module tasks
   (3+ files or 50+ lines).
-- **Local Repo Precedence:** Apply the lowercase
-  `<label>(<scope>): <description>` commit/PR standard by default, but defer to
-  repository-local `CONTRIBUTING.md`, commitlint configs, or PR templates if
-  present.
+- **Local Repo Precedence:** Follow the target repository's existing Git and PR
+  conventions — `CONTRIBUTING.md`, commitlint configs, PR templates, or recent
+  `git log` history. Never impose a personal commit or PR style.

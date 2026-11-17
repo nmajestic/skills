@@ -8,11 +8,14 @@ RULES_FILE="${HOME}/.config/opencode/AGENTS.md"
 mkdir -p "${SKILLS_DIR}"
 
 for skill in static-fire liftoff max-q catch; do
+  src="${REPO_DIR}/${skill}"
   dst="${SKILLS_DIR}/${skill}"
+  [ -d "${src}" ] || { printf 'missing source: %s\n' "${src}" >&2; exit 1; }
   rm -rf "${dst}"
-  ln -s "${REPO_DIR}/${skill}" "${dst}"
+  ln -s "${src}" "${dst}"
 done
 
+[ -f "${REPO_DIR}/AGENTS.md" ] || { printf 'missing source: %s\n' "${REPO_DIR}/AGENTS.md" >&2; exit 1; }
 rm -f "${RULES_FILE}"
 ln -s "${REPO_DIR}/AGENTS.md" "${RULES_FILE}"
 

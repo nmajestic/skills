@@ -1,14 +1,14 @@
 ---
 name: Catch
-description: Run final deterministic audits on code changes and land them into version control with strict lowercase commit and PR standards.
+description: Run final deterministic audits on code changes and land them into version control following the target repository's Git conventions.
 ---
 
 # Catch
 
 Execute final deterministic audits on all changes and land the work cleanly
 into version control. Run verification checks via parallel sub-agents to keep
-the orchestrator's context window minimal, enforce strict lowercase commit and
-PR standards, and block landing if any audit fails.
+the orchestrator's context window minimal, land with the target repository's
+existing Git and PR conventions, and block landing if any audit fails.
 
 **Standalone Mode:** When invoked directly without a prior `static-fire`
 handoff, discover the repo's test, lint, type-check, and build commands from
@@ -26,8 +26,9 @@ workflows, then stop after committing or opening the PR.
 3. **Log Isolation** — Sub-agents absorb full test runner, compiler, and linter
    outputs in their isolated contexts and return only a compact status receipt
    (< 100 words).
-4. **Strict Git Hygiene** — Enforce atomic commits, lowercase imperative
-   formatting, and structured PR descriptions before completing the mission.
+4. **Strict Git Hygiene** — Enforce atomic commits and clear, structured PR
+   descriptions that match the target repository's conventions before
+   completing the mission.
 
 ## Execution Workflow
 
@@ -77,35 +78,23 @@ parallel batch**:
 ### Phase 3: Commit & PR Landing (Git Sub-Agent)
 
 Dispatch a dedicated Git sub-agent to stage, commit, and (if requested)
-prepare/open the PR following these mandatory rules:
+prepare/open the PR using the target repository's existing conventions:
 
-- **Local Convention Precedence:** The lowercase
-  `<label>(<optional-scope>): <description>` format and allowed labels below
-  are the default standard. If the repository defines its own
-  `CONTRIBUTING.md`, commitlint config, or `.github/pull_request_template.md`,
-  defer to those local conventions instead.
-- **Commit Format:** `<label>(<optional-scope>): <description>`
-- **Casing & Grammar:** Strictly **all lowercase** (including description). Use
-  imperative present tense (`add`, `fix`, `extract`, `resolve` — never `added`,
-  `fixed`). Do not end with a period.
-- **Allowed Labels:** `feat`, `fix`, `refactor`, `perf`, `test`, `docs`,
-  `chore`, `style`.
-- **Atomicity:** If changes span distinct concerns (e.g., a `feat` and a `test`
-  or `docs` update), split into clean, atomic lowercase commits if appropriate,
-  or use the primary overarching label.
-- **PR Standard (when creating/updating a PR):**
-  - **Title:** Exact same lowercase `<label>(<optional-scope>): <description>`
-    format.
-  - **Body:** Must contain exactly three sections:
-    - `## summary`: 1–3 concise bullet points explaining what changed and why.
-    - `## verification`: Exact commands executed during Phase 1 and edge cases
-      verified.
-    - `## risks`: Breaking changes, schema migrations, new env vars, or `none`.
+- **Detect Conventions:** Check the repository for `CONTRIBUTING.md`,
+  commitlint configs, PR templates (`.github/pull_request_template.md`), or
+  recent `git log` history, and determine the commit and PR style the repo
+  actually uses.
+- **Match the Repo:** Write commit messages and PR titles/descriptions in that
+  style. Never impose a personal format.
+- **Atomic Commits:** Split distinct concerns into clean, atomic commits as the
+  repo's history suggests, or use one overarching commit.
+- **PR Body:** Follow the repo's PR template if present; otherwise write a
+  clear summary of what changed, how it was verified, and any risks.
 
 ### Phase 4: Mission Complete Report
 
 Output a concise (< 100 words) final mission summary to the user confirming:
 
 - `STATIC-FIRE` → `LIFTOFF` → `MAX-Q` → `CATCH` status (`COMPLETE`)
-- Commit hash(es) and lowercase commit message(s)
+- Commit hash(es) and commit message(s)
 - Summary of verified checks

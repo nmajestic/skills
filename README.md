@@ -15,11 +15,15 @@ four-stage pipeline, plus the global rules that bind them.
 Invoke any single skill by name to run only that stage; upstream and
 downstream stages are not triggered.
 
-## Commit convention
+## Git conventions
 
-Commits and PR titles use `<label>(<optional-scope>): <description>` —
-all lowercase, imperative present tense, no trailing period. Allowed labels:
-`feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `chore`, `style`.
+The skills are convention-agnostic: `catch` follows whatever Git and PR style
+the target repository already uses (`CONTRIBUTING.md`, commitlint configs, PR
+templates, or recent `git log` history).
+
+To enforce a personal commit/PR style everywhere, merge the rules in
+`examples/personal-git-rules.md` into your agent's global rules file (e.g.,
+`~/.config/opencode/AGENTS.md`).
 
 ## Install
 
