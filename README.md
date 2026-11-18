@@ -1,9 +1,10 @@
 # skills
 
 A collection of seven agent skills that orchestrate code changes end to end,
-plus the global rules that bind them: `mission-design`, `orbital-survey`,
-`static-fire`, `liftoff`, `max-q`, `catch`, and `abort`. The pipeline is
-spec-driven and zero-read.
+plus one standalone read-only audit and the global rules that bind them:
+`mission-design`, `orbital-survey`, `static-fire`, `liftoff`, `max-q`, `catch`,
+and `abort`, with `flight-audit` alongside them. The pipeline is spec-driven and
+zero-read.
 
 ## Architecture overview
 
@@ -16,6 +17,7 @@ spec-driven and zero-read.
 | 5 | `max-q` | 3-pass adversarial spec-compliance review | `MAX-Q PASSED` verdict + fixes |
 | 6 | `catch` | Deterministic audit, map sync & landing | Commits/PRs + synced map |
 | 7 | `abort` | Failure containment & recovery | Rollback + < 200-word Abort Report |
+| — | `flight-audit` | Standalone read-only health audit (outside the pipeline) | 3-pass verified report (`docs/flight-audit.md` on request) |
 
 Pipeline: `mission-design` → `orbital-survey` → `static-fire` → `liftoff` →
 `max-q` → `catch`, with `abort` on failure (pipeline mode only).
@@ -131,6 +133,7 @@ and stops — no upstream or downstream stages are triggered:
 - `"run max-q"` — review a supplied blueprint + diff, stop after the verdict
 - `"run catch"` — audit + commit code (never the map), stop
 - `"run abort"` — containment + triage + Abort Report, stop
+- `"run flight-audit"` — strictly read-only 3-pass audit + health report, stop
 
 **Read-only exception.** Purely read-only questions and code explanations skip
 all skills.
@@ -148,7 +151,7 @@ To enforce a personal commit/PR style everywhere, merge the rules in
 
 ## Install
 
-Run `./install.sh` to symlink all seven skills and the rules into OpenCode's
+Run `./install.sh` to symlink all eight skills and the rules into OpenCode's
 global directories:
 
 - `~/.config/opencode/skills/<skill>` → each skill directory in this repo

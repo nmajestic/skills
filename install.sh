@@ -7,7 +7,7 @@ RULES_FILE="${HOME}/.config/opencode/AGENTS.md"
 
 mkdir -p "${SKILLS_DIR}"
 
-for skill in mission-design orbital-survey static-fire liftoff max-q catch abort; do
+for skill in mission-design orbital-survey static-fire liftoff max-q catch abort flight-audit; do
   src="${REPO_DIR}/${skill}"
   dst="${SKILLS_DIR}/${skill}"
   [ -d "${src}" ] || { printf 'missing source: %s\n' "${src}" >&2; exit 1; }

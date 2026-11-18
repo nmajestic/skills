@@ -101,7 +101,8 @@ failure asks the user and does not start `abort`.
   7-skill sequence.
 - **Read-Only Exception:** Skip the pipeline only for strictly read-only
   requests (e.g., explaining existing code, answering conceptual questions, or
-  inspecting logs).
+  inspecting logs). `flight-audit` is the standalone read-only audit: it
+  diagnoses and reports, never mutates, and never chains into the pipeline.
 - **Git & PR Conventions:** Follow the target repository's existing Git and PR
   conventions (`CONTRIBUTING.md`, commitlint configs, PR templates, or recent
   `git log` history). Do not impose a personal commit style, and never force
@@ -118,7 +119,7 @@ failure asks the user and does not start `abort`.
 - **Standalone Override:** When the user explicitly invokes a single skill
   by name (e.g., "run `mission-design`", "run `orbital-survey`", "run
   `static-fire`", "run `liftoff`", "run `max-q`", "run `catch`", or "run
-  `abort`"), execute only that skill and stop — do not trigger upstream or
+  `abort`", "run `flight-audit`"), execute only that skill and stop — do not trigger upstream or
   downstream stages unless asked.
 - **Read-Only Exception:** Skip all skills for strictly read-only questions or
   code explanations.
