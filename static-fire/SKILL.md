@@ -147,6 +147,25 @@ target repository.
 Use the map's `Discovered Commands` as a starting point for Command Discovery,
 but verify against repo config files.
 
+## Spec Ingestion
+
+Alongside the terrain map, check `docs/specs/` for an active feature spec
+produced by `mission-design`.
+
+- If a `docs/specs/<feature-slug>.md` matching the request exists, ingest it
+  alongside `docs/orbital-survey.md` as the product contract when generating
+  the blueprint. Its Objective, User Flows, States & Edge Cases, and Testable
+  Acceptance Criteria constrain the plan: carry the spec's acceptance criteria
+  into the per-unit criteria, and treat its Explicit Out-of-Scope list as
+  forbidden changes.
+- If multiple specs could match the request, ask the user which one is active;
+  never guess.
+- If `docs/specs/` is missing or has no matching spec, proceed normally — a
+  spec is an optional upstream artifact, never a planning blocker.
+- If the request is still a rough, exploratory idea with no spec: in pipeline
+  mode, route it through `mission-design` first; in standalone mode, note the
+  gap and ask the user instead of invoking another skill.
+
 ## Command Discovery
 
 During evaluation, inspect the repository root for `package.json`,
@@ -162,7 +181,8 @@ a command. Never assume a language-specific runner.
 ## Workflow
 
 1. Read the request and the current context, loading `docs/orbital-survey.md`
-   first when it exists.
+   first when it exists and ingesting any active feature spec from
+   `docs/specs/` alongside it (see Spec Ingestion).
 2. Discover the repository's native commands (see Command Discovery).
 3. Draft the blueprint to the Blueprint-Grade Standard and close every open
    decision in it.

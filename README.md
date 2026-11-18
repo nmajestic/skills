@@ -1,9 +1,9 @@
 # skills
 
-A collection of six agent skills that orchestrate code changes end to end,
-plus the global rules that bind them: `orbital-survey`, `static-fire`,
-`liftoff`, `max-q`, `catch`, and `abort`. The pipeline is spec-driven and
-zero-read.
+A collection of seven agent skills that orchestrate code changes end to end,
+plus the global rules that bind them: `mission-design`, `orbital-survey`,
+`static-fire`, `liftoff`, `max-q`, `catch`, and `abort`. The pipeline is
+spec-driven and zero-read.
 
 ## Core design principle
 
@@ -16,27 +16,42 @@ only.
 
 ## Pipeline
 
-1. `orbital-survey` — pre-planning reconnaissance; maps unfamiliar or
+1. `mission-design` — upstream product definition; turns rough ideas into
+   unambiguous, < 600-word product specs at `docs/specs/<feature-slug>.md`
+   (Objective, User Flows, States & Edge Cases, Testable Acceptance Criteria,
+   Explicit Out-of-Scope) via at most 3–5 high-leverage questions with
+   sensible defaults. Runs only for high-level/exploratory requests.
+2. `orbital-survey` — pre-planning reconnaissance; maps unfamiliar or
    multi-module repositories with parallel read-only scouts and persists the
    distilled terrain map at `docs/orbital-survey.md`.
-2. `static-fire` — loads the persisted terrain map (`docs/orbital-survey.md`)
-   first, then blueprint-grade planning and confidence gate (`HIGH` /
-   `MEDIUM` / `LOW`); any open architectural decision blocks `HIGH`.
-3. `liftoff` — blind, mechanical execution via maximum parallel sub-agents;
+3. `static-fire` — loads the persisted terrain map (`docs/orbital-survey.md`)
+   first and ingests any active feature spec from `docs/specs/` alongside it,
+   then blueprint-grade planning and confidence gate (`HIGH` / `MEDIUM` /
+   `LOW`); any open architectural decision blocks `HIGH`.
+4. `liftoff` — blind, mechanical execution via maximum parallel sub-agents;
    progress tracked only by structured `PASS`/`FAIL` receipts.
-4. `max-q` — mandatory 3-pass adversarial loop: 1:1 blueprint-to-diff
+5. `max-q` — mandatory 3-pass adversarial loop: 1:1 blueprint-to-diff
    compliance, edge-case stress, and a clean-room regression sweep; no human
    code inspection.
-5. `catch` — runs deterministic checks, independently re-verifies the
+6. `catch` — runs deterministic checks, independently re-verifies the
    blueprint's machine-verifiable criteria, then match the incoming hash or
    halt, update terrain lines, commit the code excluding the map, write
    `Last Synced Commit` as that bare hash, seal `MAP_HASH_OUT`, re-certify
    that new receipt, then commit the map only if CLEAR. The earlier code
    fingerprint does not cover the hash write. It reports telemetry only
    (spec checks, tests/builds, commit hash).
-6. `abort` — failure containment and recovery: clean rollback, parallel
+7. `abort` — failure containment and recovery: clean rollback, parallel
    root-cause triage, landmine persistence, and routing into a fresh
    `static-fire` blueprint or an Abort Report.
+
+## Product specs
+
+- `docs/specs/<feature-slug>.md` is the product contract, written by
+  `mission-design` before technical planning begins.
+- `static-fire` checks `docs/specs/` for an active spec and ingests it
+  alongside the terrain map; the spec's acceptance criteria feed the
+  blueprint's per-unit criteria, and its out-of-scope list becomes forbidden
+  changes. A missing spec never blocks planning.
 
 ## Persistent terrain map
 
@@ -66,9 +81,10 @@ only.
 ## Standalone override
 
 The pipeline has two modes. In pipeline mode, each stage hands off to the
-next: `orbital-survey` → `static-fire` → `liftoff` → `max-q` → `catch`, with
-`abort` taking over on failure in pipeline mode only. In standalone mode, invoking any single skill
-by name (including `orbital-survey` and `abort`) produces that stage's own
+next: `mission-design` (for rough ideas) → `orbital-survey` → `static-fire` →
+`liftoff` → `max-q` → `catch`, with `abort` taking over on failure in pipeline
+mode only. In standalone mode, invoking any single skill by name (including
+`mission-design`, `orbital-survey`, and `abort`) produces that stage's own
 output and stops; no upstream or downstream stages are triggered.
 
 ## Git conventions
@@ -84,5 +100,5 @@ To enforce a personal commit/PR style everywhere, merge the rules in
 
 ## Install
 
-Run `./install.sh` to symlink all six skills and the rules into OpenCode's
+Run `./install.sh` to symlink all seven skills and the rules into OpenCode's
 global directories (`~/.config/opencode/skills` and `~/.config/opencode/AGENTS.md`).

@@ -1,16 +1,31 @@
 # AGENTS.md
 
-## Mandatory Build Workflow (`orbital-survey` → `static-fire` → `liftoff` → `max-q` → `catch`, plus `abort` for failure recovery)
+## Mandatory Build Workflow (`mission-design` → `orbital-survey` → `static-fire` → `liftoff` → `max-q` → `catch`, plus `abort` for failure recovery)
 
 All build, implementation, scaffolding, bug-fix, and refactoring requests must
-execute through this six-skill suite in strict sequence, using the canonical
-names below. In pipeline mode only, `abort` runs when a retry cap or
-unrecoverable blocker is hit. A standalone failure asks the user and does
-not start `abort`.
+execute through this seven-skill suite in strict sequence, using the canonical
+names below. `mission-design` runs first only when the request is a rough
+product or feature idea; concrete requests (or ones with an existing spec in
+`docs/specs/`) start at `orbital-survey` / `static-fire`. In pipeline mode only,
+`abort` runs when a retry cap or unrecoverable blocker is hit. A standalone
+failure asks the user and does not start `abort`.
 
 ### 1. Canonical Skill Names & Pipeline Order
 
-0. **`orbital-survey` (Pre-Planning Reconnaissance)**
+0. **`mission-design` (Product Definition)**
+   - **Trigger:** Automatically invoked first when a request is high-level or
+     exploratory (e.g., `"help me flesh out..."`, `"design a feature for..."`,
+     `"I want to build a product that..."`). Also runs standalone via
+     `"run mission-design"`. Skipped when the request is already concrete or a
+     matching spec exists in `docs/specs/`.
+   - **Action:** Read `docs/orbital-survey.md` (if present) for domain
+     vocabulary, audit the idea (user goal/trigger, states & transitions, edge
+     cases/constraints, v1 scope), ask at most 3–5 high-leverage questions with
+     sensible defaults, and persist a < 600-word product spec at
+     `docs/specs/<feature-slug>.md` covering Objective, User Flows, States &
+     Edge Cases, Testable Acceptance Criteria, and Explicit Out-of-Scope.
+
+1. **`orbital-survey` (Pre-Planning Reconnaissance)**
    - **Trigger:** Automatically invoked before `static-fire` when
      `docs/orbital-survey.md` is missing, stale, or lacks coverage for the
      target modules. Also runs standalone via `"run orbital-survey"`.
@@ -19,16 +34,17 @@ not start `abort`.
      `docs/orbital-survey.md`. When the map already exists, scout only new or
      unmapped directories and patch it.
 
-1. **`static-fire` (Planning & Confidence Gate)**
+2. **`static-fire` (Planning & Confidence Gate)**
    - **Trigger:** Automatically invoked first whenever asked to build, fix, or
      modify code — before creating, editing, or deleting any files. Loads
-     `docs/orbital-survey.md` first.
+     `docs/orbital-survey.md` first and ingests any active feature spec from
+     `docs/specs/` alongside it.
    - **Action:** Gather context, explicitly list unverified assumptions, and
      evaluate the plan (`HIGH`, `MEDIUM`, or `LOW` confidence tier). Halt and
      ask clarifying questions if `LOW`; close every open gap before execution
      if `MEDIUM`.
 
-2. **`liftoff` (Max-Parallel Implementation)**
+3. **`liftoff` (Max-Parallel Implementation)**
    - **Trigger:** Automatically invoked once `static-fire` clears execution
      (`HIGH` confidence).
    - **Action:** Act strictly as a lean orchestrator. Decompose the blueprint
@@ -36,7 +52,7 @@ not start `abort`.
      maximum concurrent sub-agents per dependency wave. Keep orchestrator
      context minimal via terse (< 150-word) handoff receipts with evidence.
 
-3. **`max-q` (3-Pass Adversarial Parallel Review)**
+4. **`max-q` (3-Pass Adversarial Parallel Review)**
    - **Trigger:** Automatically invoked immediately after `liftoff` waves
      complete.
    - **Action:** Run the mandatory 3-pass review loop (structural/spec
@@ -45,7 +61,7 @@ not start `abort`.
      defects in parallel, re-running the affected pass (capped retries) before
      proceeding.
 
-4. **`catch` (Deterministic Audit & Landing)**
+5. **`catch` (Deterministic Audit & Landing)**
    - **Trigger:** Automatically invoked once `max-q` returns `CLEAR`.
    - **Action:** Fan out parallel sub-agents to run tests, type-checks,
      linters, and repo hygiene scans. Once all pass, match the incoming hash
@@ -56,7 +72,7 @@ not start `abort`.
      requested, following the target repository's existing Git and PR
      conventions.
 
-5. **`abort` (Failure Containment & Recovery)**
+6. **`abort` (Failure Containment & Recovery)**
    - **Trigger:** In pipeline mode only, when `liftoff`, `max-q`, or `catch`
      hits a retry cap or an unrecoverable blocker. A standalone failure asks
      the user and does not start `abort`. `"run abort"` is the standalone
@@ -72,7 +88,7 @@ not start `abort`.
 
 - **Zero Bypass (Pipeline Mode):** For general build, implementation, bug-fix,
   or refactoring requests, never write code or commit changes outside the
-  6-skill sequence.
+  7-skill sequence.
 - **Read-Only Exception:** Skip the pipeline only for strictly read-only
   requests (e.g., explaining existing code, answering conceptual questions, or
   inspecting logs).
@@ -85,14 +101,15 @@ not start `abort`.
 
 - **Default Pipeline Mode:** For any general build, implementation, bug-fix, or
   refactoring request (e.g., "build X", "fix Y"), automatically execute the
-  full suite (`orbital-survey` when the map is missing, stale, or unmapped →
+  full suite (`mission-design` when the request is a rough idea →
+  `orbital-survey` when the map is missing, stale, or unmapped →
   `static-fire` → `liftoff` → `max-q` → `catch`, with `abort` on failure)
   without skipping stages.
 - **Direct Standalone Override:** If the user explicitly invokes a single skill
-  by name (e.g., "run `static-fire`", "use `liftoff` on this spec", "run
-  `max-q` on my diff", "run `catch`", "run `orbital-survey`", or "run
-  `abort`"), execute only that requested skill and halt upon completion — do
-  not trigger upstream or downstream stages unless asked.
+  by name (e.g., "run `mission-design`", "run `static-fire`", "use `liftoff` on
+  this spec", "run `max-q` on my diff", "run `catch`", "run `orbital-survey`",
+  or "run `abort`"), execute only that requested skill and halt upon
+  completion — do not trigger upstream or downstream stages unless asked.
 - **Read-Only Exception:** Skip all skills for strictly read-only questions or
   code explanations.
 
@@ -120,10 +137,11 @@ not start `abort`.
 - **Generator:** `orbital-survey` generates and incrementally updates the map;
   it is read-only across source code, with `docs/orbital-survey.md` as its
   single write target.
-- **Planning Ingestion:** `static-fire` ingests the map first; in pipeline
-  mode, if the map is missing, stale, or lacks coverage, `static-fire` triggers
-  `orbital-survey` before planning (capped at one trigger per planning
-  session).
+- **Planning Ingestion:** `static-fire` ingests the map first, alongside any
+  active feature spec from `docs/specs/<feature-slug>.md` written by
+  `mission-design`; in pipeline mode, if the map is missing, stale, or lacks
+  coverage, `static-fire` triggers `orbital-survey` before planning (capped at
+  one trigger per planning session).
 - **Landing Refresh:** `catch` keeps the map fresh on landing: when completed
   changes added, renamed, or changed files, modules, schemas, or public
   contracts, compare `MAP_HASH_IN` or halt, update terrain lines, commit the
