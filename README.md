@@ -20,19 +20,26 @@ only.
    unambiguous, < 600-word product specs at `docs/specs/<feature-slug>.md`
    (Objective, User Flows, States & Edge Cases, Testable Acceptance Criteria,
    Explicit Out-of-Scope) via at most 3–5 high-leverage questions with
-   sensible defaults. Runs only for high-level/exploratory requests.
-2. `orbital-survey` — pre-planning reconnaissance; maps unfamiliar or
+   sensible defaults. Runs only for exploratory, high-level, or
+   under-specified requests.
+2. `orbital-survey` — codebase reconnaissance; maps unfamiliar or
    multi-module repositories with parallel read-only scouts and persists the
-   distilled terrain map at `docs/orbital-survey.md`.
-3. `static-fire` — loads the persisted terrain map (`docs/orbital-survey.md`)
-   first and ingests any active feature spec from `docs/specs/` alongside it,
-   then blueprint-grade planning and confidence gate (`HIGH` / `MEDIUM` /
-   `LOW`); any open architectural decision blocks `HIGH`.
-4. `liftoff` — blind, mechanical execution via maximum parallel sub-agents;
-   progress tracked only by structured `PASS`/`FAIL` receipts.
-5. `max-q` — mandatory 3-pass adversarial loop: 1:1 blueprint-to-diff
-   compliance, edge-case stress, and a clean-room regression sweep; no human
-   code inspection.
+   distilled terrain map (< 500 words) at `docs/orbital-survey.md`.
+3. `static-fire` — blueprint-grade technical planning; ingests the active
+   feature spec (`docs/specs/<feature-slug>.md`, if present) and the terrain
+   map (`docs/orbital-survey.md`) first, discovers the repo's native
+   test/lint/type-check/build commands, lists assumptions, and produces an
+   unambiguous, compile-ready blueprint gated by confidence (`HIGH` /
+   `MEDIUM` / `LOW`); any open architectural decision blocks `HIGH`, and only
+   `HIGH` proceeds to `liftoff`.
+4. `liftoff` — max-parallel implementation; blind, mechanical execution of the
+   blueprint via file-disjoint parallel sub-agents (1 worker for trivial
+   1–2-file / < 50-line changes); progress tracked only by structured
+   `PASS`/`FAIL` receipts.
+5. `max-q` — 3-pass adversarial spec-compliance review; Pass 1: 1:1
+   blueprint-to-diff compliance, Pass 2: adversarial edge cases & state,
+   Pass 3: clean-room regression sweep — 4 parallel reviewers per pass; no
+   human code inspection.
 6. `catch` — runs deterministic checks, independently re-verifies the
    blueprint's machine-verifiable criteria, then match the incoming hash or
    halt, update terrain lines, commit the code excluding the map, write

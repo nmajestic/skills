@@ -12,12 +12,12 @@ failure asks the user and does not start `abort`.
 
 ### 1. Canonical Skill Names & Pipeline Order
 
-0. **`mission-design` (Product Definition)**
-   - **Trigger:** Automatically invoked first when a request is high-level or
-     exploratory (e.g., `"help me flesh out..."`, `"design a feature for..."`,
-     `"I want to build a product that..."`). Also runs standalone via
-     `"run mission-design"`. Skipped when the request is already concrete or a
-     matching spec exists in `docs/specs/`.
+1. **`mission-design` (Product & Feature Definition)**
+   - **Trigger:** Automatically invoked first when a request is exploratory,
+     high-level, or under-specified (e.g., `"help me flesh out..."`,
+     `"design a feature for..."`, `"I want to build a product that..."`). Also
+     runs standalone via `"run mission-design"`. Skipped when the request is
+     already concrete or a matching spec exists in `docs/specs/`.
    - **Action:** Read `docs/orbital-survey.md` (if present) for domain
      vocabulary, audit the idea (user goal/trigger, states & transitions, edge
      cases/constraints, v1 scope), ask at most 3–5 high-leverage questions with
@@ -25,7 +25,7 @@ failure asks the user and does not start `abort`.
      `docs/specs/<feature-slug>.md` covering Objective, User Flows, States &
      Edge Cases, Testable Acceptance Criteria, and Explicit Out-of-Scope.
 
-1. **`orbital-survey` (Pre-Planning Reconnaissance)**
+2. **`orbital-survey` (Codebase Reconnaissance)**
    - **Trigger:** Automatically invoked before `static-fire` when
      `docs/orbital-survey.md` is missing, stale, or lacks coverage for the
      target modules. Also runs standalone via `"run orbital-survey"`.
@@ -34,45 +34,51 @@ failure asks the user and does not start `abort`.
      `docs/orbital-survey.md`. When the map already exists, scout only new or
      unmapped directories and patch it.
 
-2. **`static-fire` (Planning & Confidence Gate)**
-   - **Trigger:** Automatically invoked first whenever asked to build, fix, or
-     modify code — before creating, editing, or deleting any files. Loads
-     `docs/orbital-survey.md` first and ingests any active feature spec from
-     `docs/specs/` alongside it.
-   - **Action:** Gather context, explicitly list unverified assumptions, and
-     evaluate the plan (`HIGH`, `MEDIUM`, or `LOW` confidence tier). Halt and
-     ask clarifying questions if `LOW`; close every open gap before execution
-     if `MEDIUM`.
+3. **`static-fire` (Blueprint-Grade Technical Planning)**
+   - **Trigger:** Automatically invoked for any build, fix, or modify request
+     (after `mission-design` when the request was exploratory) — before
+     creating, editing, or deleting any files. Ingests
+     `docs/specs/<feature-slug>.md` (if present) and `docs/orbital-survey.md`
+     first.
+   - **Action:** Discover the repository's native test/lint/type-check/build
+     commands, explicitly list unverified assumptions, and produce an
+     unambiguous, compile-ready blueprint gated by confidence tier (`HIGH`,
+     `MEDIUM`, or `LOW`). Proceed to `liftoff` only on `HIGH`; halt and ask
+     clarifying questions if `LOW`; close every open gap and re-tier before
+     execution if `MEDIUM`.
 
-3. **`liftoff` (Max-Parallel Implementation)**
+4. **`liftoff` (Max-Parallel Implementation)**
    - **Trigger:** Automatically invoked once `static-fire` clears execution
      (`HIGH` confidence).
-   - **Action:** Act strictly as a lean orchestrator. Decompose the blueprint
-     into atomic, file-disjoint units (1 file/unit = 1 sub-agent) and fan out
-     maximum concurrent sub-agents per dependency wave. Keep orchestrator
-     context minimal via terse (< 150-word) handoff receipts with evidence.
+   - **Action:** Act strictly as a lean, zero-read orchestrator executing the
+     blueprint verbatim. Decompose it into atomic, file-disjoint units
+     (1 file/unit = 1 sub-agent) and fan out maximum concurrent sub-agents per
+     dependency wave, scaling down to 1 worker for trivial changes (1–2 files,
+     fewer than 50 lines). Keep orchestrator context minimal via terse
+     (< 150-word) handoff receipts with evidence.
 
-4. **`max-q` (3-Pass Adversarial Parallel Review)**
+5. **`max-q` (3-Pass Adversarial Spec-Compliance Review)**
    - **Trigger:** Automatically invoked immediately after `liftoff` waves
      complete.
-   - **Action:** Run the mandatory 3-pass review loop (structural/spec
-     compliance, adversarial edge cases, clean-room regression sweep), fanning
-     out 4 review sub-agents per pass. Auto-patch any `BLOCKER` or `MAJOR`
-     defects in parallel, re-running the affected pass (capped retries) before
-     proceeding.
+   - **Action:** Run the mandatory 3 sequential passes — Pass 1: 1:1 blueprint
+     compliance; Pass 2: adversarial edge cases & state; Pass 3: clean-room
+     regression sweep — fanning out 4 parallel review sub-agents per pass so
+     human code inspection is unnecessary. Auto-patch any `BLOCKER` or
+     `MAJOR` defects in parallel, re-running the affected pass (capped
+     retries) before proceeding.
 
-5. **`catch` (Deterministic Audit & Landing)**
+6. **`catch` (Deterministic Audit, Map Sync & Landing)**
    - **Trigger:** Automatically invoked once `max-q` returns `CLEAR`.
-   - **Action:** Fan out parallel sub-agents to run tests, type-checks,
-     linters, and repo hygiene scans. Once all pass, match the incoming hash
-     or halt, update terrain lines, commit the code excluding the map, write
-     `Last Synced Commit` as that bare hash, seal `MAP_HASH_OUT`, re-certify
-     that new receipt, then commit the map only if CLEAR. The earlier code
-     fingerprint does not cover the hash write. Prepare/open PRs if
-     requested, following the target repository's existing Git and PR
-     conventions.
+   - **Action:** Fan out parallel sub-agents to run the discovered tests,
+     type-checks, linters, and repo hygiene scans. Once all pass, match the
+     incoming hash or halt, update terrain lines, commit the code excluding
+     the map, write `Last Synced Commit` as that bare hash, seal
+     `MAP_HASH_OUT`, re-certify that new receipt, then commit the map only if
+     CLEAR. The earlier code fingerprint does not cover the hash write.
+     Prepare/open PRs if requested, following the target repository's
+     existing Git and PR conventions.
 
-6. **`abort` (Failure Containment & Recovery)**
+7. **`abort` (Failure Containment & Recovery)**
    - **Trigger:** In pipeline mode only, when `liftoff`, `max-q`, or `catch`
      hits a retry cap or an unrecoverable blocker. A standalone failure asks
      the user and does not start `abort`. `"run abort"` is the standalone
