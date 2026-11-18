@@ -1,6 +1,6 @@
 ---
-name: Mission Design
-description: Flesh out rough product or feature ideas into unambiguous, testable product specs at docs/specs/<feature-slug>.md before technical planning begins.
+name: mission-design
+description: Flesh out rough product or feature ideas into unambiguous, testable product specs under docs/specs/ before technical planning begins.
 ---
 
 # Mission Design
