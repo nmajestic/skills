@@ -70,25 +70,29 @@ failure asks the user and does not start `abort`.
 6. **`catch` (Deterministic Audit, Map Sync & Landing)**
    - **Trigger:** Automatically invoked once `max-q` returns `CLEAR`.
    - **Action:** Fan out parallel sub-agents to run the discovered tests,
-     type-checks, linters, and repo hygiene scans. Once all pass, match the
-     incoming hash or halt, update terrain lines, commit the code excluding
-     the map, write `Last Synced Commit` as that bare hash, seal
-     `MAP_HASH_OUT`, re-certify that new receipt, then commit the map only if
-     CLEAR. The earlier code fingerprint does not cover the hash write.
-     Prepare/open PRs if requested, following the target repository's
-     existing Git and PR conventions.
+     type-checks, linters, and repo hygiene scans, escalating to `abort` in
+     pipeline mode if retries are exhausted. Once all pass, match the
+     incoming hash or halt; update `docs/orbital-survey.md` when structural
+     files, modules, schemas, or public contracts changed: update terrain
+     lines, commit the code excluding the map, write `Last Synced Commit` as
+     that bare hash, seal `MAP_HASH_OUT`, re-certify that new receipt, then
+     commit the map only if CLEAR. The earlier code fingerprint does not
+     cover the hash write. Commit and prepare/open PRs following the target
+     repository's local Git and PR conventions.
 
 7. **`abort` (Failure Containment & Recovery)**
-   - **Trigger:** In pipeline mode only, when `liftoff`, `max-q`, or `catch`
-     hits a retry cap or an unrecoverable blocker. A standalone failure asks
-     the user and does not start `abort`. `"run abort"` is the standalone
-     entry and stops after the Abort Report.
-   - **Action:** Capture the failing diff and errors, roll back uncommitted
-     broken changes (preserving `docs/orbital-survey.md`), run 3 parallel
-     read-only diagnostic sub-agents, persist confirmed landmines into the
-     map, then in pipeline mode only route the root cause into a fresh
-     `static-fire` blueprint. Standalone abort emits the Abort Report and
-     stops. It does not start `static-fire`, `liftoff`, `max-q`, or `catch`.
+   - **Trigger:** In pipeline mode only, whenever `liftoff`, `max-q`, or
+     `catch` exhausts its retry cap or hits a blocking environment error. A
+     standalone failure asks the user and does not start `abort`.
+     `"run abort"` is the standalone entry and stops after the Abort Report.
+   - **Action:** Snapshot and revert broken uncommitted changes (explicitly
+     preserving `docs/orbital-survey.md`), run parallel root-cause triage
+     across 3 read-only diagnostic sub-agents, log confirmed landmines into
+     the map, then in pipeline mode only route the root cause into a
+     corrected `static-fire` blueprint — or emit a crisp < 200-word
+     escalation brief (the Abort Report). Standalone abort emits the Abort
+     Report and stops. It does not start `static-fire`, `liftoff`, `max-q`,
+     or `catch`.
 
 ### 2. Execution Guardrails
 
@@ -105,17 +109,17 @@ failure asks the user and does not start `abort`.
 
 ### 3. Dual-Mode Execution
 
-- **Default Pipeline Mode:** For any general build, implementation, bug-fix, or
-  refactoring request (e.g., "build X", "fix Y"), automatically execute the
-  full suite (`mission-design` when the request is a rough idea →
-  `orbital-survey` when the map is missing, stale, or unmapped →
-  `static-fire` → `liftoff` → `max-q` → `catch`, with `abort` on failure)
-  without skipping stages.
-- **Direct Standalone Override:** If the user explicitly invokes a single skill
-  by name (e.g., "run `mission-design`", "run `static-fire`", "use `liftoff` on
-  this spec", "run `max-q` on my diff", "run `catch`", "run `orbital-survey`",
-  or "run `abort`"), execute only that requested skill and halt upon
-  completion — do not trigger upstream or downstream stages unless asked.
+- **Full Pipeline Mode (Default):** For any feature, build, implementation,
+  bug-fix, or refactoring request (e.g., "build X", "fix Y"), automatically
+  chain the applicable stages from the entry point through `catch`
+  (`mission-design` when the request is a rough idea → `orbital-survey` when
+  the map is missing, stale, or unmapped → `static-fire` → `liftoff` →
+  `max-q` → `catch`, with `abort` on failure) without skipping stages.
+- **Standalone Override:** When the user explicitly invokes a single skill
+  by name (e.g., "run `mission-design`", "run `orbital-survey`", "run
+  `static-fire`", "run `liftoff`", "run `max-q`", "run `catch`", or "run
+  `abort`"), execute only that skill and stop — do not trigger upstream or
+  downstream stages unless asked.
 - **Read-Only Exception:** Skip all skills for strictly read-only questions or
   code explanations.
 
@@ -135,6 +139,9 @@ failure asks the user and does not start `abort`.
 - **Local Repo Precedence:** Follow the target repository's existing Git and PR
   conventions — `CONTRIBUTING.md`, commitlint configs, PR templates, or recent
   `git log` history. Never impose a personal commit or PR style.
+- **Convention-Agnostic Core:** No core skill hardcodes Git/PR formatting or
+  language-specific runners; every skill defers to the target repository's
+  native Git/PR conventions and dynamically discovered build/test commands.
 
 ## Persistent Codebase Terrain Map
 
